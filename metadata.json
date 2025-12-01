@@ -1,0 +1,5 @@
+{
+  "name": "Mooco Daily Manager",
+  "description": "A daily management dashboard for Mooco to track stock, expenses, and perform daily closings using Supabase.",
+  "requestFramePermissions": []
+}
