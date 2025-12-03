@@ -9,15 +9,15 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
-  const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !pin) {
-      setError('Please enter both username and PIN');
+    if (!name || !pin) {
+      setError('Please enter both Name and PIN');
       return;
     }
 
@@ -25,15 +25,15 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setError('');
 
     try {
-      const user = await loginUser(username.trim(), pin);
+      const user = await loginUser(name.trim(), pin);
       if (user) {
         onLoginSuccess(user);
       } else {
-        setError('Invalid Username or PIN');
+        setError('Invalid Name or PIN');
       }
     } catch (err) {
       console.error(err);
-      setError('Invalid Username or PIN');
+      setError('Invalid Name or PIN');
     } finally {
       setLoading(false);
     }
@@ -58,12 +58,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 </div>
                 <input
                     type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Username"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Name"
                     className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-100 bg-slate-50 focus:border-blue-500 focus:bg-white focus:ring-0 outline-none transition-colors text-slate-800 font-medium"
                     autoFocus
-                    autoComplete="username"
+                    autoComplete="name"
                 />
              </div>
 
@@ -96,7 +96,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             type="submit" 
             fullWidth 
             isLoading={loading}
-            disabled={!username || pin.length < 4}
+            disabled={!name || pin.length < 4}
             className="mt-2"
           >
             Access Dashboard
