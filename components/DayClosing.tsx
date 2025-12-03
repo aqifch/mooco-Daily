@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Layout } from './Layout';
-import { 
-  fetchProducts, 
-  fetchTodayStockIn, 
+import {
+  fetchProducts,
+  fetchTodayStockIn,
   fetchTodayClosings,
   fetchTodayExpenses,
   fetchTodayIncome,
@@ -12,8 +12,8 @@ import {
   getTodayString
 } from '../services/supabase';
 import { Product, ViewState, User, DailyClosing, CashWithdrawal } from '../types';
-import { 
-  Wallet, 
+import {
+  Wallet,
   Package,
   TrendingUp,
   TrendingDown,
@@ -52,35 +52,37 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [locking, setLocking] = useState(false);
-  
+
   // Today's Summary (auto-calculated)
   const [todaySales, setTodaySales] = useState(0);
   const [todayExpenses, setTodayExpenses] = useState(0);
   const [todayIncome, setTodayIncome] = useState(0);
-  
+
   // Opening Cash - loaded from previous day's next_day_opening_cash
   const [openingCash, setOpeningCash] = useState<number>(0);
   const [openingCashLocked, setOpeningCashLocked] = useState(false);
   const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
   const [firstTimeOpeningCash, setFirstTimeOpeningCash] = useState('');
   const [savingFirstTimeOpening, setSavingFirstTimeOpening] = useState(false);
-  
+
   // User Input
   const [cashInDrawer, setCashInDrawer] = useState('');
-  
+
   // Cash Withdrawals
   const [withdrawals, setWithdrawals] = useState<CashWithdrawal[]>([]);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawReason, setWithdrawReason] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
-  
+
   // Closing Status
   const [existingClosing, setExistingClosing] = useState<DailyClosing | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
-  
+  // Store just-saved closing data to ensure locked screen shows correct values immediately
+  const [justSavedClosing, setJustSavedClosing] = useState<DailyClosing | null>(null);
+
   // Next Day Opening Cash (set after locking)
   const [nextDayOpeningCash, setNextDayOpeningCash] = useState('');
   const [nextDayOpeningSaved, setNextDayOpeningSaved] = useState(false);
@@ -93,9 +95,10 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
 
   const loadData = async () => {
     setLoading(true);
+    setJustSavedClosing(null); // Clear just-saved data on reload
     try {
       const today = getTodayString();
-      
+
       // Fetch all data in parallel
       const [products, stockInData, expensesData, incomeData, closingsData, withdrawalsData] = await Promise.all([
         fetchProducts(),
@@ -109,7 +112,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
       // Calculate totals (returned items have negative amounts, so sum works correctly)
       const totalExpenses = expensesData.reduce((sum, e) => sum + (e.amount || 0), 0);
       const totalIncome = incomeData.reduce((sum, i) => sum + (i.amount || 0), 0);
-      
+
       setTodayExpenses(totalExpenses);
       setTodayIncome(totalIncome);
       setWithdrawals(withdrawalsData);
@@ -117,7 +120,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
       // Check for existing closing
       const latestClosing = closingsData.length > 0 ? closingsData[0] : null;
       setExistingClosing(latestClosing);
-      
+
       // Load opening cash from previous day's final closing
       const { data: previousDayClosing } = await supabase
         .from('daily_closings')
@@ -127,39 +130,49 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
         .order('date_str', { ascending: false })
         .limit(1)
         .single();
-      
-      if (previousDayClosing?.next_day_opening_cash !== null && previousDayClosing?.next_day_opening_cash !== undefined) {
+
+      // 1. Try to get opening cash from TODAY'S record first
+      if (latestClosing?.opening_cash !== null && latestClosing?.opening_cash !== undefined) {
+        setOpeningCash(latestClosing.opening_cash);
+        setOpeningCashLocked(true);
+        setIsFirstTimeUser(false);
+      }
+      // 2. If not in today's record, try PREVIOUS DAY'S next_day_opening_cash
+      else if (previousDayClosing?.next_day_opening_cash !== null && previousDayClosing?.next_day_opening_cash !== undefined) {
         // Previous day set opening cash for today - LOCKED
         setOpeningCash(previousDayClosing.next_day_opening_cash);
         setOpeningCashLocked(true);
         setIsFirstTimeUser(false);
+
+        // OPTIONAL: We could save this to today's record immediately so it's there for next reload
+        // But we can just rely on this fallback logic.
       } else {
         // First time user OR previous day didn't set opening cash
         setOpeningCash(0);
         setOpeningCashLocked(false);
         setIsFirstTimeUser(true);
       }
-      
+
       if (latestClosing) {
         setIsLocked(latestClosing.closing_type === 'final');
         setCashInDrawer(latestClosing.cash_received?.toString() || '');
-        setLastSaved(new Date(latestClosing.created_at || '').toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
+        setLastSaved(new Date(latestClosing.created_at || '').toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit'
         }));
-        
+
         // Check if next day opening is already set
         if (latestClosing.next_day_opening_cash !== null && latestClosing.next_day_opening_cash !== undefined) {
           setNextDayOpeningCash(latestClosing.next_day_opening_cash.toString());
           setNextDayOpeningSaved(true);
         }
-        
+
         // Load saved stock from report_json
         let savedStock: Record<number, number> = {};
         if (latestClosing.report_json) {
           try {
-            const report = typeof latestClosing.report_json === 'string' 
-              ? JSON.parse(latestClosing.report_json) 
+            const report = typeof latestClosing.report_json === 'string'
+              ? JSON.parse(latestClosing.report_json)
               : latestClosing.report_json;
             if (report.closingStock) {
               report.closingStock.forEach((item: any) => {
@@ -176,11 +189,11 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
           const productStockIn = stockInData
             .filter(s => s.product_id === product.id && !s.is_return)
             .reduce((sum, s) => sum + (s.quantity || 0), 0);
-          
+
           const opening = product.current_opening_stock || 0;
           const available = opening + productStockIn;
           const savedRemaining = savedStock[product.id!];
-          
+
           return {
             product,
             opening,
@@ -190,9 +203,9 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
             sold: savedRemaining !== undefined ? available - savedRemaining : 0
           };
         });
-        
+
         setStockItems(items);
-        
+
         // Calculate sales from saved data
         const sales = items.reduce((sum, item) => {
           const remaining = savedStock[item.product.id!];
@@ -203,26 +216,26 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
           return sum;
         }, 0);
         setTodaySales(sales);
-        
+
       } else {
         // No existing closing - fresh start
         const items: StockItem[] = products.map(product => {
           const productStockIn = stockInData
             .filter(s => s.product_id === product.id && !s.is_return)
             .reduce((sum, s) => sum + (s.quantity || 0), 0);
-          
+
           const opening = product.current_opening_stock || 0;
           const available = opening + productStockIn;
-          
-        return {
+
+          return {
             product,
             opening,
             stockIn: productStockIn,
             available,
             remaining: '',
             sold: 0
-        };
-      });
+          };
+        });
 
         setStockItems(items);
         setTodaySales(0);
@@ -238,15 +251,15 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
   // Update remaining stock for a product
   const updateRemaining = (productId: number, value: string) => {
     if (isLocked) return;
-    
+
     const numValue = value === '' ? '' : Math.max(0, parseInt(value) || 0).toString();
-    
+
     setStockItems(prev => prev.map(item => {
       if (item.product.id === productId) {
         const remaining = numValue === '' ? 0 : parseInt(numValue);
         const cappedRemaining = Math.min(remaining, item.available);
         const sold = item.available - cappedRemaining;
-        
+
         return {
           ...item,
           remaining: numValue === '' ? '' : cappedRemaining.toString(),
@@ -277,7 +290,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
     const expectedCash = openingCash + salesFromStock + todayIncome - todayExpenses - totalWithdrawals;
     const actualCash = parseFloat(cashInDrawer) || 0;
     const difference = actualCash - expectedCash;
-    
+
     return {
       sales: salesFromStock,
       openingCash,
@@ -305,15 +318,15 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
         withdrawReason || 'Cash withdrawal',
         currentUser?.id
       );
-      
+
       if (!result.success) {
         throw new Error(result.message);
       }
-      
+
       // Refresh withdrawals
       const newWithdrawals = await fetchTodayWithdrawals();
       setWithdrawals(newWithdrawals);
-      
+
       // Reset form and close modal
       setWithdrawAmount('');
       setWithdrawReason('');
@@ -336,6 +349,33 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
 
     setSavingFirstTimeOpening(true);
     try {
+      const today = getTodayString();
+
+      if (existingClosing?.id) {
+        // Update existing record
+        const { error } = await supabase
+          .from('daily_closings')
+          .update({ opening_cash: amount })
+          .eq('id', existingClosing.id);
+
+        if (error) throw error;
+      } else {
+        // Create new record with opening cash
+        const { data, error } = await supabase
+          .from('daily_closings')
+          .insert([{
+            date_str: today,
+            opening_cash: amount,
+            total_revenue: 0, // Default
+            closing_type: 'partial' // Default
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+        setExistingClosing(data);
+      }
+
       setOpeningCash(amount);
       setOpeningCashLocked(true);
       setIsFirstTimeUser(false);
@@ -392,7 +432,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
   // Save (Update) - does NOT update product stock
   const handleSave = async () => {
     if (!canSave || isLocked) return;
-    
+
     setSaving(true);
     try {
       const today = getTodayString();
@@ -409,7 +449,8 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
         closing_type: 'partial',
         notes: null,
         closed_by: currentUser?.id || null,
-        report_json: JSON.stringify({ closingStock })
+        report_json: JSON.stringify({ closingStock }),
+        opening_cash: openingCash // Ensure we keep saving this
       };
 
       if (existingClosing?.id) {
@@ -418,7 +459,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
           .from('daily_closings')
           .update(closingData)
           .eq('id', existingClosing.id);
-        
+
         if (error) throw error;
       } else {
         // Create new
@@ -427,18 +468,18 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
           .insert([closingData])
           .select()
           .single();
-        
+
         if (error) throw error;
         setExistingClosing(data);
       }
 
       setLastSaved(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
       setTodaySales(calculations.sales);
-      
+
       // Brief success indicator
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 2000);
-      
+
     } catch (error: any) {
       console.error('Save error:', error);
       alert('Save failed: ' + (error.message || 'Unknown error'));
@@ -450,7 +491,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
   // Lock (Final) - DOES update product stock
   const handleLock = async () => {
     if (!canLock || isLocked) return;
-    
+
     const confirmMsg = `🔒 LOCK TODAY'S CLOSING?\n\n` +
       `Opening Cash: Rs ${openingCash.toFixed(0)}\n` +
       `Sales: Rs ${calculations.sales.toFixed(0)}\n` +
@@ -464,9 +505,13 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
       `• Update stock for tomorrow\n` +
       `• Lock today's closing (no more edits)\n\n` +
       `Are you sure?`;
-    
+
     if (!window.confirm(confirmMsg)) return;
-    
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:508',message:'handleLock START',data:{calculatedSales:calculations.sales,existingClosingId:existingClosing?.id,existingClosingRevenue:existingClosing?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     setLocking(true);
     try {
       const today = getTodayString();
@@ -484,7 +529,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
       }
 
       const cashReceived = parseFloat(cashInDrawer) || 0;
-      
+
       const closingData = {
         date_str: today,
         total_revenue: calculations.sales,
@@ -493,26 +538,69 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
         closing_type: 'final',
         notes: null,
         closed_by: currentUser?.id || null,
-        report_json: JSON.stringify({ closingStock })
+        report_json: JSON.stringify({ closingStock }),
+        opening_cash: openingCash // Ensure we keep saving this
       };
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:536',message:'BEFORE database save',data:{closingDataTotalRevenue:closingData.total_revenue,isUpdate:!!existingClosing?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+
       if (existingClosing?.id) {
-        await supabase
+        const { data: updateResult, error: updateError } = await supabase
           .from('daily_closings')
           .update(closingData)
-          .eq('id', existingClosing.id);
+          .eq('id', existingClosing.id)
+          .select()
+          .single();
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:543',message:'AFTER database update',data:{updateError:updateError?.message,updateResultTotalRevenue:updateResult?.total_revenue,existingClosingStateRevenue:existingClosing?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:544',message:'BEFORE state update',data:{willUpdateState:true,newStateRevenue:updateResult?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+
+        // CRITICAL FIX: Store saved data immediately for locked screen
+        const savedClosingData = updateResult || { ...existingClosing, ...closingData };
+        setJustSavedClosing(savedClosingData);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:566',message:'UPDATING state with updateResult',data:{updateResultRevenue:updateResult?.total_revenue,savedClosingRevenue:savedClosingData.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        setExistingClosing(savedClosingData);
       } else {
         const { data } = await supabase
           .from('daily_closings')
           .insert([closingData])
           .select()
           .single();
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:579',message:'AFTER insert',data:{insertDataTotalRevenue:data?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:585',message:'UPDATING state with insert data',data:{insertDataRevenue:data?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+
+        setJustSavedClosing(data);
         setExistingClosing(data);
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:595',message:'BEFORE setIsLocked',data:{justSavedClosingRevenue:justSavedClosing?.total_revenue,existingClosingRevenue:existingClosing?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+
       setIsLocked(true);
       setLastSaved(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
-      
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:562',message:'AFTER setIsLocked',data:{isLockedNow:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+
     } catch (error: any) {
       console.error('Lock error:', error);
       alert('Lock failed: ' + (error.message || 'Unknown error'));
@@ -524,8 +612,8 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
   // Loading state
   if (loading) {
     return (
-      <Layout 
-        title="Day Closing" 
+      <Layout
+        title="Day Closing"
         onBack={onBack}
         activeView={ViewState.CLOSING}
         onNavigate={onNavigate}
@@ -543,18 +631,28 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
 
   // Locked state - Today is closed, can set tomorrow's opening cash
   if (isLocked) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:586',message:'Locked screen render',data:{existingClosingId:existingClosing?.id,existingClosingRevenue:existingClosing?.total_revenue,calculationsSales:calculations.sales},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     // USE DATABASE VALUES for locked screen - NOT recalculated values!
-    const savedSales = existingClosing?.total_revenue || 0;
-    const savedCashReceived = existingClosing?.cash_received || 0;
-    const savedWithdrawals = existingClosing?.total_withdrawals || 0;
-    
+    // Priority: justSavedClosing (immediate) > existingClosing (from state)
+    const closingToUse = justSavedClosing || existingClosing;
+    const savedSales = closingToUse?.total_revenue || 0;
+    const savedCashReceived = closingToUse?.cash_received || 0;
+    const savedWithdrawals = closingToUse?.total_withdrawals || 0;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/cc1c725a-f1f7-4843-802a-c9e65cf29fe2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DayClosing.tsx:662',message:'Locked screen calculated values',data:{savedSales,calculationsSales:calculations.sales,usingJustSaved:!!justSavedClosing,justSavedRevenue:justSavedClosing?.total_revenue,existingClosingRevenue:existingClosing?.total_revenue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     // Expected = Opening + Sales + Income - Expenses - Withdrawals (using saved values)
     const savedExpectedCash = openingCash + savedSales + todayIncome - todayExpenses - savedWithdrawals;
     const savedDifference = savedCashReceived - savedExpectedCash;
-    
+
     return (
-      <Layout 
-        title="Day Closing" 
+      <Layout
+        title="Day Closing"
         onBack={onBack}
         activeView={ViewState.CLOSING}
         onNavigate={onNavigate}
@@ -571,17 +669,16 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
               <p className="text-xs text-green-600">Stock updated for tomorrow</p>
             </div>
           </div>
-          
+
           {/* Next Day Opening Cash - Set Tonight */}
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <Sunrise size={20} className="text-amber-500" />
               <div>
-                <p className="text-sm font-bold text-slate-800">Kal ka Opening Cash</p>
-                <p className="text-[10px] text-slate-500">Drawer mein raat ko kitna rakh rahe ho?</p>
+                <p className="text-sm font-bold text-slate-800">Opening Cash</p>
               </div>
             </div>
-            
+
             {nextDayOpeningSaved ? (
               <div className="flex items-center justify-between bg-white/70 rounded-xl p-3">
                 <span className="text-slate-600 text-sm">Amount Set:</span>
@@ -616,12 +713,12 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                 </button>
               </div>
             )}
-            
+
             <p className="text-[10px] text-amber-600 mt-3">
               💡 {nextDayOpeningSaved ? 'Kal subah ye amount automatically locked dikhega' : 'Ye amount kal subah automatically locked dikhega'}
             </p>
           </div>
-          
+
           {/* Today's Summary Card - Using SAVED database values */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
             <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
@@ -664,7 +761,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                   const hasExtra = savedDifference > 0;
                   return (
                     <span className={`font-bold ${hasLoss ? 'text-red-600' : hasExtra ? 'text-blue-600' : 'text-green-600'}`}>
-                      Rs {Math.abs(savedDifference).toFixed(0)} 
+                      Rs {Math.abs(savedDifference).toFixed(0)}
                       {hasLoss ? ' (Loss)' : hasExtra ? ' (Extra)' : ' ✓'}
                     </span>
                   );
@@ -691,8 +788,8 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
               ))}
             </div>
           </div>
-          
-          <button 
+
+          <button
             onClick={onBack}
             className="w-full px-6 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors"
           >
@@ -705,15 +802,15 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
 
   // Main UI
   return (
-    <Layout 
-      title="Day Closing" 
+    <Layout
+      title="Day Closing"
       onBack={onBack}
       activeView={ViewState.CLOSING}
       onNavigate={onNavigate}
       currentUser={currentUser}
     >
       <div className="space-y-6 pb-44 md:pb-32">
-        
+
         {/* Status Bar */}
         {lastSaved && (
           <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
@@ -736,11 +833,10 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
             <div className="flex items-center gap-2 mb-3">
               <Sunrise size={20} className="text-amber-500" />
               <div>
-                <p className="text-sm font-bold text-slate-800">Opening Cash Set Karo</p>
-                <p className="text-[10px] text-slate-500">Aaj drawer mein kitna cash hai? (First time only)</p>
+                <p className="text-sm font-bold text-slate-800">Opening Cash</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">Rs</span>
@@ -765,10 +861,6 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                 Save
               </button>
             </div>
-            
-            <p className="text-[10px] text-amber-600 mt-3">
-              ⚠️ Ye ek baar save hone ke baad edit nahi hoga
-            </p>
           </div>
         ) : (
           // Opening cash is locked (from previous night)
@@ -804,25 +896,24 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                   className="w-32 pl-9 pr-3 py-2 text-right font-bold bg-white border-2 border-emerald-300 rounded-lg focus:border-emerald-500 outline-none text-sm"
                 />
               </div>
-                  </div>
-            
+            </div>
+
             {/* Expected vs Actual */}
             {cashInDrawer && (
               <div className="mt-3 pt-3 border-t border-emerald-200/50 flex items-center justify-between text-xs">
                 <span className="text-slate-500">
                   Expected: <span className="font-bold text-slate-700">Rs {calculations.expectedCash.toFixed(0)}</span>
                 </span>
-                <span className={`font-bold px-2 py-1 rounded-full ${
-                  calculations.isMatch ? 'bg-green-100 text-green-700' :
-                  calculations.hasLoss ? 'bg-red-100 text-red-700' : 
-                  'bg-blue-100 text-blue-700'
-                }`}>
-                  {calculations.isMatch ? '✓ Match' : 
-                   calculations.hasLoss ? `↓ ${Math.abs(calculations.difference).toFixed(0)} Loss` :
-                   `↑ ${calculations.difference.toFixed(0)} Extra`}
+                <span className={`font-bold px-2 py-1 rounded-full ${calculations.isMatch ? 'bg-green-100 text-green-700' :
+                  calculations.hasLoss ? 'bg-red-100 text-red-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                  {calculations.isMatch ? '✓ Match' :
+                    calculations.hasLoss ? `↓ ${Math.abs(calculations.difference).toFixed(0)} Loss` :
+                      `↑ ${calculations.difference.toFixed(0)} Extra`}
                 </span>
-                    </div>
-                  )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -868,7 +959,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
             </div>
           </div>
         )}
-        
+
         {/* Add Withdrawal Button (when no withdrawals) */}
         {withdrawals.length === 0 && (
           <button
@@ -895,13 +986,13 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
             </div>
             {/* Progress Bar - Mobile Only */}
             <div className="md:hidden h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full transition-all duration-500"
                 style={{ width: `${(stockItems.filter(i => i.remaining !== '').length / stockItems.length) * 100}%` }}
               />
             </div>
           </div>
-          
+
           {/* Desktop Table Header */}
           <div className="hidden md:grid grid-cols-7 gap-2 px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
             <div className="col-span-2">Product</div>
@@ -911,7 +1002,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
             <div className="text-center">Left</div>
             <div className="text-right">Sold / Revenue</div>
           </div>
-          
+
           {/* Stock Items */}
           <div className="divide-y divide-slate-100">
             {stockItems.map((item, index) => (
@@ -941,11 +1032,10 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                       placeholder="?"
                       min="0"
                       max={item.available}
-                      className={`w-14 px-2 py-1 text-center text-sm font-bold rounded-lg border outline-none transition-all ${
-                        item.remaining !== '' 
-                          ? 'bg-emerald-50 border-emerald-300 text-emerald-700' 
-                          : 'bg-blue-50 border-blue-200 focus:border-blue-400'
-                      }`}
+                      className={`w-14 px-2 py-1 text-center text-sm font-bold rounded-lg border outline-none transition-all ${item.remaining !== ''
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                        : 'bg-blue-50 border-blue-200 focus:border-blue-400'
+                        }`}
                     />
                   </div>
                   <div className="text-right">
@@ -958,7 +1048,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                     )}
                   </div>
                 </div>
-                
+
                 {/* Mobile View - Compact Row */}
                 <div className={`md:hidden flex items-center gap-2 px-3 py-2 ${item.remaining !== '' ? 'bg-emerald-50/40' : ''}`}>
                   {/* Left: Product Info + Stock Flow */}
@@ -976,24 +1066,23 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                       <span className="text-slate-400">=</span>
                       <span className="font-bold text-slate-700">{item.available}</span>
                     </div>
-                </div>
+                  </div>
 
                   {/* Center: Input */}
-                    <input
-                      type="number"
-                      inputMode="numeric"
+                  <input
+                    type="number"
+                    inputMode="numeric"
                     value={item.remaining}
                     onChange={(e) => updateRemaining(item.product.id!, e.target.value)}
                     placeholder="?"
                     min="0"
                     max={item.available}
-                    className={`w-14 h-10 text-center text-sm font-bold rounded-lg border-2 outline-none transition-all shrink-0 ${
-                      item.remaining !== '' 
-                        ? 'bg-emerald-100 border-emerald-400 text-emerald-700' 
-                        : 'bg-slate-50 border-slate-200 focus:border-blue-400'
-                    }`}
+                    className={`w-14 h-10 text-center text-sm font-bold rounded-lg border-2 outline-none transition-all shrink-0 ${item.remaining !== ''
+                      ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
+                      : 'bg-slate-50 border-slate-200 focus:border-blue-400'
+                      }`}
                   />
-                  
+
                   {/* Right: Result */}
                   <div className="w-16 text-right shrink-0">
                     {item.remaining !== '' ? (
@@ -1009,7 +1098,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
               </div>
             ))}
           </div>
-          
+
           {/* Footer - Totals */}
           <div className="border-t border-slate-200">
             {/* Desktop Totals */}
@@ -1031,7 +1120,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                 {stockItems.reduce((sum, i) => sum + i.sold, 0)} / Rs {calculations.sales.toFixed(0)}
               </div>
             </div>
-            
+
             {/* Mobile Totals - Compact */}
             <div className="md:hidden flex items-center justify-between px-3 py-2 bg-slate-50 text-[10px]">
               <div className="flex items-center gap-2">
@@ -1044,9 +1133,9 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                 <span className="font-medium">{stockItems.reduce((sum, i) => sum + i.sold, 0)} sold</span>
                 <span className="font-bold">₨{calculations.sales.toFixed(0)}</span>
               </div>
-                  </div>
-                </div>
-              </div>
+            </div>
+          </div>
+        </div>
 
       </div>
 
@@ -1056,50 +1145,48 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
           {/* Warning if opening cash not set */}
           {isFirstTimeUser && !openingCashLocked && (
             <p className="text-[10px] text-amber-600 text-center mb-2 font-medium">
-              ⚠️ Pehle Opening Cash set karo, phir Lock kar sakoge
+              ⚠️ Opening Cash set karo
             </p>
           )}
-          
+
           <div className="flex gap-2">
             {/* Save Button */}
             <button
               onClick={handleSave}
               disabled={!canSave || saving}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
-                canSave && !saving
-                  ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-[0.98]'
-                  : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-              }`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${canSave && !saving
+                ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-[0.98]'
+                : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                }`}
             >
               {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
               {saving ? 'Saving...' : 'Save Draft'}
             </button>
-            
+
             {/* Lock Button */}
             <button
               onClick={handleLock}
               disabled={!canLock || locking}
-              className={`flex-[2] flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${
-                canLock && !locking
-                  ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-200/50 hover:shadow-emerald-300/50 active:scale-[0.98]'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
+              className={`flex-[2] flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-all ${canLock && !locking
+                ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-200/50 hover:shadow-emerald-300/50 active:scale-[0.98]'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                }`}
             >
               {locking ? <RefreshCw size={16} className="animate-spin" /> : <Lock size={16} />}
               {locking ? 'Locking...' : 'Lock & Close Day'}
             </button>
           </div>
         </div>
-        </div>
+      </div>
 
       {/* Cash Withdrawal Modal - Fullscreen on mobile */}
       {showWithdrawModal && (
         <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center">
-          <div 
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowWithdrawModal(false)}
           ></div>
-          
+
           <div className="relative bg-white w-full md:max-w-sm md:rounded-3xl rounded-t-3xl shadow-2xl animate-in slide-in-from-bottom md:zoom-in duration-300">
             {/* Header */}
             <div className="px-4 md:px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-red-50 to-white rounded-t-3xl">
@@ -1112,7 +1199,7 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                   <p className="text-xs text-slate-500">Drawer se cash nikaalna</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowWithdrawModal(false)}
                 className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
               >
@@ -1128,16 +1215,16 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                 </label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Rs</span>
-                        <input
-                          type="number"
+                  <input
+                    type="number"
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
-                          placeholder="0"
+                    placeholder="0"
                     autoFocus
                     className="w-full pl-12 pr-4 py-3.5 min-h-[48px] text-lg font-bold text-center bg-red-50 border border-red-200 rounded-xl focus:border-red-500 focus:bg-white outline-none transition-all"
-                        />
-                      </div>
-        </div>
+                  />
+                </div>
+              </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
@@ -1150,8 +1237,8 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                   placeholder="e.g. Personal use, Bank deposit..."
                   className="w-full px-4 py-3.5 min-h-[48px] bg-slate-50 border border-slate-200 rounded-xl focus:border-red-500 focus:bg-white outline-none transition-all text-base"
                 />
-            </div>
-            
+              </div>
+
               {/* Actions */}
               <div className="flex gap-3 pt-2">
                 <button
@@ -1175,10 +1262,10 @@ export const DayClosing: React.FC<DayClosingProps> = ({ onBack, onNavigate, curr
                     'Withdraw'
                   )}
                 </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
       )}
     </Layout>
   );

@@ -61,6 +61,7 @@ export interface DailyClosing {
   created_at?: string;
   report_json?: any;
   next_day_opening_cash?: number | null;
+  opening_cash?: number | null;
 }
 
 export interface CashWithdrawal {

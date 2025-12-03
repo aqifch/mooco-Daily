@@ -99,6 +99,8 @@ CREATE TABLE daily_closings (
   id SERIAL PRIMARY KEY,
   date_str TEXT NOT NULL UNIQUE,
   total_revenue NUMERIC NOT NULL DEFAULT 0,
+  opening_cash NUMERIC,
+  next_day_opening_cash NUMERIC,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

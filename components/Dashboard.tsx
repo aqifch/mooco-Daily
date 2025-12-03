@@ -34,7 +34,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
     try {
       setLoading(true);
       const today = new Date().toISOString().split('T')[0];
-      
+
       const [expensesData, incomeData, closingsData, withdrawalsData] = await Promise.all([
         fetchTodayExpenses(),
         fetchTodayIncome(),
@@ -45,25 +45,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
       const totalExpenses = expensesData.reduce((acc, curr) => acc + (curr.amount || 0), 0);
       const totalIncome = incomeData.reduce((acc, curr) => acc + (curr.amount || 0), 0);
       const totalWithdrawals = withdrawalsData.reduce((acc, curr) => acc + (curr.amount || 0), 0);
-      
+
       // Check closing status for warnings
       const hasFinal = closingsData.some(c => c.closing_type === 'final');
       const hasPartial = closingsData.some(c => c.closing_type === 'partial');
       setHasFinalClosing(hasFinal);
       setHasPartialClosing(hasPartial);
-      
+
       // Get opening cash from previous day's final closing
       let openingCash = 0;
       try {
         const { data: previousDayClosing } = await supabase
           .from('daily_closings')
-          .select('next_day_opening_cash')
+          .select('next_day_opening_cash, opening_cash')
           .eq('closing_type', 'final')
           .lt('date_str', today)
           .order('date_str', { ascending: false })
           .limit(1)
           .single();
-        
+
         if (previousDayClosing?.next_day_opening_cash !== null && previousDayClosing?.next_day_opening_cash !== undefined) {
           openingCash = previousDayClosing.next_day_opening_cash;
         }
@@ -71,27 +71,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
         // No previous day closing - first time user
         openingCash = 0;
       }
-      
+
       // Get the LATEST closing record
       let totalSales = 0;
       let actualCash = 0;
       let tomorrowOpeningCash: number | null = null;
-      
+
       if (closingsData.length > 0) {
         // Sort by ID desc to get latest
         const latestClosing = closingsData.sort((a, b) => (b.id || 0) - (a.id || 0))[0];
         totalSales = latestClosing.total_revenue || 0;
         actualCash = latestClosing.cash_received || 0;
-        
+
         // Check if tomorrow's opening cash is set
         if (latestClosing.next_day_opening_cash !== null && latestClosing.next_day_opening_cash !== undefined) {
           tomorrowOpeningCash = latestClosing.next_day_opening_cash;
         }
+
+        // CRITICAL FIX: Use the opening_cash saved in today's record if available
+        // This handles the case where user set "First Time Opening Cash" or manually set it today
+        if (latestClosing.opening_cash !== null && latestClosing.opening_cash !== undefined) {
+          openingCash = latestClosing.opening_cash;
+        }
       }
-      
+
       // Expected Cash = Opening Cash + Sales + Income - Expenses - Withdrawals
       const expectedCash = openingCash + totalSales + totalIncome - totalExpenses - totalWithdrawals;
-      
+
       // Loss = Expected - Actual (positive means shortage)
       const loss = expectedCash - actualCash;
 
@@ -116,25 +122,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
   // Check Permission Helper
   const canAccess = (view: ViewState) => {
     if (!user) return false;
-    
+
     const role = user.role?.toLowerCase() || '';
     if (role === 'admin' || role === 'owner' || role === 'manager') return true;
-    
+
     if (user.permissions && user.permissions.length > 0) {
-        const viewLower = view.toLowerCase().replace('_', '');
-        return user.permissions.some(p => 
-          p === view || p.toLowerCase().replace('_', '') === viewLower || p === '*'
-        );
+      const viewLower = view.toLowerCase().replace('_', '');
+      return user.permissions.some(p =>
+        p === view || p.toLowerCase().replace('_', '') === viewLower || p === '*'
+      );
     }
-    
+
     const basicTasks = [ViewState.STOCK_IN, ViewState.EXPENSES, ViewState.INCOME, ViewState.CLOSING];
     return basicTasks.includes(view);
   };
 
   return (
-    <Layout 
-      title="Dashboard" 
-      onLogout={onLogout} 
+    <Layout
+      title="Dashboard"
+      onLogout={onLogout}
       activeView={ViewState.DASHBOARD}
       onNavigate={onNavigate}
       currentUser={user}
@@ -142,66 +148,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
       <div className="space-y-4 md:space-y-6">
         {/* Stats Row - 2 per row on mobile, 3 on tablet, 6 on desktop */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-            
-            {/* 1. Opening Cash */}
-            <div className="bg-gradient-to-br from-amber-400 to-amber-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-amber-100/50">
-                <div className="flex items-center gap-1 text-amber-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
-                    <Sunrise size={10} /> Opening
-                </div>
-                <div className="text-lg md:text-xl font-bold tracking-tight">
-                    {loading ? '...' : `₨${stats.openingCash.toFixed(0)}`}
-                </div>
-            </div>
 
-            {/* 2. Today Sales */}
-            <div className="bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-emerald-100/50">
-                <div className="flex items-center gap-1 text-emerald-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
-                    <Store size={10} /> Sales
-                </div>
-                <div className="text-lg md:text-xl font-bold tracking-tight">
-                    {loading ? '...' : `₨${stats.sales.toFixed(0)}`}
-                </div>
+          {/* 1. Opening Cash */}
+          <div className="bg-gradient-to-br from-amber-400 to-amber-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-amber-100/50">
+            <div className="flex items-center gap-1 text-amber-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
+              <Sunrise size={10} /> Opening
             </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight">
+              {loading ? '...' : `₨${stats.openingCash.toFixed(0)}`}
+            </div>
+          </div>
 
-            {/* 3. Today Income */}
-            <div className="bg-gradient-to-br from-teal-400 to-teal-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-teal-100/50">
-                <div className="flex items-center gap-1 text-teal-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
-                    <HandCoins size={10} /> Income
-                </div>
-                <div className="text-lg md:text-xl font-bold tracking-tight">
-                    {loading ? '...' : `₨${stats.income.toFixed(0)}`}
-                </div>
+          {/* 2. Today Sales */}
+          <div className="bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-emerald-100/50">
+            <div className="flex items-center gap-1 text-emerald-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
+              <Store size={10} /> Sales
             </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight">
+              {loading ? '...' : `₨${stats.sales.toFixed(0)}`}
+            </div>
+          </div>
 
-            {/* 4. Today Expenses */}
-            <div className="bg-gradient-to-br from-orange-400 to-orange-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-orange-100/50">
-                <div className="flex items-center gap-1 text-orange-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
-                    <TrendingDown size={10} /> Expenses
-                </div>
-                <div className="text-lg md:text-xl font-bold tracking-tight">
-                    {loading ? '...' : `₨${stats.expenses.toFixed(0)}`}
-                </div>
+          {/* 3. Today Income */}
+          <div className="bg-gradient-to-br from-teal-400 to-teal-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-teal-100/50">
+            <div className="flex items-center gap-1 text-teal-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
+              <HandCoins size={10} /> Income
             </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight">
+              {loading ? '...' : `₨${stats.income.toFixed(0)}`}
+            </div>
+          </div>
 
-            {/* 5. Withdrawals */}
-            <div className="bg-gradient-to-br from-red-400 to-red-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-red-100/50">
-                <div className="flex items-center gap-1 text-red-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
-                    <MinusCircle size={10} /> Withdraw
-                </div>
-                <div className="text-lg md:text-xl font-bold tracking-tight">
-                    {loading ? '...' : `₨${stats.withdrawals.toFixed(0)}`}
-                </div>
+          {/* 4. Today Expenses */}
+          <div className="bg-gradient-to-br from-orange-400 to-orange-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-orange-100/50">
+            <div className="flex items-center gap-1 text-orange-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
+              <TrendingDown size={10} /> Expenses
             </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight">
+              {loading ? '...' : `₨${stats.expenses.toFixed(0)}`}
+            </div>
+          </div>
 
-            {/* 6. Expected Cash */}
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-blue-100/50">
-                <div className="flex items-center gap-1 text-blue-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
-                    <Wallet size={10} /> Expected
-                </div>
-                <div className="text-lg md:text-xl font-bold tracking-tight">
-                    {loading ? '...' : `₨${stats.expectedCash.toFixed(0)}`}
-                </div>
+          {/* 5. Withdrawals */}
+          <div className="bg-gradient-to-br from-red-400 to-red-500 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-red-100/50">
+            <div className="flex items-center gap-1 text-red-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
+              <MinusCircle size={10} /> Withdraw
             </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight">
+              {loading ? '...' : `₨${stats.withdrawals.toFixed(0)}`}
+            </div>
+          </div>
+
+          {/* 6. Expected Cash */}
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl md:rounded-2xl p-3 md:p-4 text-white shadow-md shadow-blue-100/50">
+            <div className="flex items-center gap-1 text-blue-100 text-[9px] md:text-[10px] uppercase font-bold tracking-wider mb-1">
+              <Wallet size={10} /> Expected
+            </div>
+            <div className="text-lg md:text-xl font-bold tracking-tight">
+              {loading ? '...' : `₨${stats.expectedCash.toFixed(0)}`}
+            </div>
+          </div>
 
         </div>
 
@@ -230,8 +236,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
             <div className="flex items-center gap-2">
               <Sunrise size={18} className="text-blue-500" />
               <div>
-                <span className="font-bold text-blue-800 text-sm">Kal ka Opening Cash</span>
-                <p className="text-[10px] text-blue-500">Tomorrow's drawer start</p>
+                <span className="font-bold text-blue-800 text-sm">Opening Cash</span>
               </div>
             </div>
             <div className="text-right">
@@ -243,7 +248,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onLogout, user
 
         {/* Final Closing Warning - Compact */}
         {!loading && hasPartialClosing && !hasFinalClosing && (
-          <button 
+          <button
             onClick={() => onNavigate(ViewState.CLOSING)}
             className="w-full bg-amber-50 border border-amber-300 rounded-xl px-4 py-2.5 flex items-center justify-between hover:bg-amber-100 transition-colors"
           >

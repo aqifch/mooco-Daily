@@ -1,18 +1,18 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Layout } from './Layout';
 import { ViewState, User, Transaction, DailyClosing } from '../types';
-import { 
-  fetchAllTransactions, 
-  fetchAllClosings, 
+import {
+  fetchAllTransactions,
+  fetchAllClosings,
   fetchReportSummary,
-  fetchDailyBreakdown 
+  fetchDailyBreakdown
 } from '../services/supabase';
-import { 
-  BarChart3, 
-  TrendingUp, 
-  TrendingDown, 
-  Calendar, 
-  Filter, 
+import {
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  Filter,
   Download,
   Clock,
   Package,
@@ -55,7 +55,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
   const [customEnd, setCustomEnd] = useState('');
   const [transactionFilter, setTransactionFilter] = useState<TransactionFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Data states
   const [summary, setSummary] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -106,7 +106,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
     setLoading(true);
     try {
       const { start, end } = getDateRange();
-      
+
       const [summaryData, txnData, closingData, dailyBreakdown] = await Promise.all([
         fetchReportSummary(start, end),
         fetchAllTransactions({ startDate: start, endDate: end }),
@@ -128,20 +128,20 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     let filtered = transactions;
-    
+
     if (transactionFilter !== 'ALL') {
       filtered = filtered.filter(t => t.type === transactionFilter);
     }
-    
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(t => 
+      filtered = filtered.filter(t =>
         t.category?.toLowerCase().includes(query) ||
         t.products?.name?.toLowerCase().includes(query) ||
         t.note?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   }, [transactions, transactionFilter, searchQuery]);
 
@@ -157,22 +157,22 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
   const expenseBreakdown = useMemo((): CategoryBreakdown[] => {
     const expenses = transactions.filter(t => t.type === 'EXPENSE' && !t.is_return);
     const totalExpenses = expenses.reduce((sum, t) => sum + (t.amount || 0), 0);
-    
+
     // Group by category (main category)
     const categoryMap = new Map<string, { total: number; count: number; subCategories: Map<string, { total: number; count: number }> }>();
-    
+
     expenses.forEach(t => {
       const cat = t.category || 'Uncategorized';
       const subCat = t.sub_category || null;
-      
+
       if (!categoryMap.has(cat)) {
         categoryMap.set(cat, { total: 0, count: 0, subCategories: new Map() });
       }
-      
+
       const catData = categoryMap.get(cat)!;
       catData.total += t.amount || 0;
       catData.count += 1;
-      
+
       if (subCat) {
         if (!catData.subCategories.has(subCat)) {
           catData.subCategories.set(subCat, { total: 0, count: 0 });
@@ -182,7 +182,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         subData.count += 1;
       }
     });
-    
+
     // Convert to array and sort by total
     const result: CategoryBreakdown[] = [];
     categoryMap.forEach((data, cat) => {
@@ -192,7 +192,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         count: data.count,
         percentage: totalExpenses > 0 ? (data.total / totalExpenses) * 100 : 0
       });
-      
+
       // Add sub-categories
       data.subCategories.forEach((subData, subCat) => {
         result.push({
@@ -204,29 +204,29 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         });
       });
     });
-    
+
     return result.sort((a, b) => b.total - a.total);
   }, [transactions]);
 
   const incomeBreakdown = useMemo((): CategoryBreakdown[] => {
     const incomes = transactions.filter(t => t.type === 'INCOME' && !t.is_return);
     const totalIncome = incomes.reduce((sum, t) => sum + (t.amount || 0), 0);
-    
+
     // Group by category
     const categoryMap = new Map<string, { total: number; count: number; subCategories: Map<string, { total: number; count: number }> }>();
-    
+
     incomes.forEach(t => {
       const cat = t.category || 'Uncategorized';
       const subCat = t.sub_category || null;
-      
+
       if (!categoryMap.has(cat)) {
         categoryMap.set(cat, { total: 0, count: 0, subCategories: new Map() });
       }
-      
+
       const catData = categoryMap.get(cat)!;
       catData.total += t.amount || 0;
       catData.count += 1;
-      
+
       if (subCat) {
         if (!catData.subCategories.has(subCat)) {
           catData.subCategories.set(subCat, { total: 0, count: 0 });
@@ -236,7 +236,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         subData.count += 1;
       }
     });
-    
+
     // Convert to array and sort by total
     const result: CategoryBreakdown[] = [];
     categoryMap.forEach((data, cat) => {
@@ -246,7 +246,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         count: data.count,
         percentage: totalIncome > 0 ? (data.total / totalIncome) * 100 : 0
       });
-      
+
       // Add sub-categories
       data.subCategories.forEach((subData, subCat) => {
         result.push({
@@ -258,32 +258,32 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         });
       });
     });
-    
+
     return result.sort((a, b) => b.total - a.total);
   }, [transactions]);
 
-  const totalExpenseAmount = useMemo(() => 
+  const totalExpenseAmount = useMemo(() =>
     expenseBreakdown.filter(e => !e.subCategory).reduce((sum, e) => sum + e.total, 0)
-  , [expenseBreakdown]);
+    , [expenseBreakdown]);
 
-  const totalIncomeAmount = useMemo(() => 
+  const totalIncomeAmount = useMemo(() =>
     incomeBreakdown.filter(i => !i.subCategory).reduce((sum, i) => sum + i.total, 0)
-  , [incomeBreakdown]);
+    , [incomeBreakdown]);
 
   // Format date for display
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-PK', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric' 
+    return date.toLocaleDateString('en-PK', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
     });
   };
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleTimeString('en-PK', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-PK', {
+      hour: '2-digit',
       minute: '2-digit'
     });
   };
@@ -308,33 +308,32 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
   };
 
   return (
-    <Layout 
-      title="Reports & History" 
+    <Layout
+      title="Reports & History"
       onBack={onBack}
       activeView={ViewState.REPORTS}
       onNavigate={onNavigate}
       currentUser={currentUser}
     >
       <div className="space-y-6 pb-24">
-        
+
         {/* Header with Date Range */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-800">Business Reports</h2>
             <p className="text-sm text-slate-500">Analyze your business performance</p>
           </div>
-          
+
           {/* Date Range Selector */}
           <div className="flex items-center gap-2 flex-wrap">
             {(['today', 'week', 'month', 'year'] as DateRange[]).map(range => (
               <button
                 key={range}
                 onClick={() => setDateRange(range)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${
-                  dateRange === range 
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${dateRange === range
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
               >
                 {range === 'today' ? 'Today' : range === 'week' ? '7 Days' : range === 'month' ? '30 Days' : '1 Year'}
               </button>
@@ -353,11 +352,10 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
             <button
               key={tab.id}
               onClick={() => { setActiveTab(tab.id as TabType); setCurrentPage(1); }}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                activeTab === tab.id 
-                  ? 'bg-white text-slate-800 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === tab.id
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+                }`}
             >
               <tab.icon size={18} />
               <span className="hidden md:inline">{tab.label}</span>
@@ -368,7 +366,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
         {loading ? (
           <div className="space-y-4 animate-pulse">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[1,2,3,4].map(i => <div key={i} className="h-28 bg-slate-200 rounded-2xl"></div>)}
+              {[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-slate-200 rounded-2xl"></div>)}
             </div>
             <div className="h-64 bg-slate-200 rounded-2xl"></div>
           </div>
@@ -407,11 +405,10 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                   </div>
 
                   {/* Net Profit */}
-                  <div className={`rounded-2xl p-4 text-white shadow-lg ${
-                    summary.netProfit >= 0 
-                      ? 'bg-gradient-to-br from-blue-500 to-blue-600' 
-                      : 'bg-gradient-to-br from-red-500 to-red-600'
-                  }`}>
+                  <div className={`rounded-2xl p-4 text-white shadow-lg ${summary.netProfit >= 0
+                    ? 'bg-gradient-to-br from-blue-500 to-blue-600'
+                    : 'bg-gradient-to-br from-red-500 to-red-600'
+                    }`}>
                     <div className="flex items-center gap-1.5 text-blue-100 text-[10px] uppercase font-bold tracking-wider mb-2">
                       <Wallet size={12} /> Net Profit
                     </div>
@@ -490,20 +487,20 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                     <BarChart3 size={20} className="text-blue-500" />
                     Daily Sales Trend (Last 30 Days)
                   </h3>
-                  
+
                   {(() => {
                     // Generate last 30 days with data
                     const last30Days: { date: string; revenue: number; cashReceived: number; hasData: boolean }[] = [];
                     const today = new Date();
-                    
+
                     for (let i = 29; i >= 0; i--) {
                       const date = new Date(today);
                       date.setDate(date.getDate() - i);
                       const dateStr = date.toISOString().split('T')[0];
-                      
+
                       // Find matching data
                       const dayData = dailyData.find(d => d.date_str === dateStr);
-                      
+
                       last30Days.push({
                         date: dateStr,
                         revenue: dayData?.total_revenue || 0,
@@ -511,11 +508,11 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                         hasData: !!dayData
                       });
                     }
-                    
+
                     const maxRevenue = Math.max(...last30Days.map(d => d.revenue), 1);
                     const totalRevenue = last30Days.reduce((sum, d) => sum + d.revenue, 0);
                     const daysWithSales = last30Days.filter(d => d.revenue > 0).length;
-                    
+
                     return (
                       <>
                         {/* Stats Row */}
@@ -533,7 +530,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                             <p className="text-lg font-bold text-purple-700">Rs {daysWithSales > 0 ? Math.round(totalRevenue / daysWithSales).toLocaleString() : 0}</p>
                           </div>
                         </div>
-                        
+
                         {/* Chart */}
                         <div className="relative">
                           {/* Y-axis labels */}
@@ -542,7 +539,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                             <span>Rs {Math.round(maxRevenue / 2).toLocaleString()}</span>
                             <span>0</span>
                           </div>
-                          
+
                           {/* Chart Area */}
                           <div className="ml-14">
                             <div className="flex items-end gap-[2px] h-40 border-l border-b border-slate-200 pl-1 pb-1">
@@ -551,10 +548,10 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                 const hasLoss = day.hasData && day.cashReceived < day.revenue;
                                 const isToday = idx === 29;
                                 const dayNum = new Date(day.date).getDate();
-                                
+
                                 return (
-                                  <div 
-                                    key={idx} 
+                                  <div
+                                    key={idx}
                                     className="flex-1 flex flex-col items-center group relative"
                                   >
                                     {/* Tooltip */}
@@ -565,19 +562,18 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                         {day.hasData && <p>Cash: Rs {day.cashReceived.toLocaleString()}</p>}
                                       </div>
                                     </div>
-                                    
+
                                     {/* Bar */}
-                                    <div 
-                                      className={`w-full rounded-t transition-all cursor-pointer ${
-                                        !day.hasData 
-                                          ? 'bg-slate-200' 
-                                          : hasLoss 
-                                            ? 'bg-red-400 hover:bg-red-500' 
-                                            : 'bg-emerald-400 hover:bg-emerald-500'
-                                      } ${isToday ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
+                                    <div
+                                      className={`w-full rounded-t transition-all cursor-pointer ${!day.hasData
+                                        ? 'bg-slate-200'
+                                        : hasLoss
+                                          ? 'bg-red-400 hover:bg-red-500'
+                                          : 'bg-emerald-400 hover:bg-emerald-500'
+                                        } ${isToday ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
                                       style={{ height: `${Math.max(height, 2)}%`, minHeight: day.hasData ? '4px' : '2px' }}
                                     ></div>
-                                    
+
                                     {/* Date label (show every 5th day) */}
                                     {(idx % 5 === 0 || isToday) && (
                                       <span className={`text-[8px] mt-1 ${isToday ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
@@ -590,7 +586,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                             </div>
                           </div>
                         </div>
-                        
+
                         {/* Legend */}
                         <div className="flex items-center justify-center gap-6 mt-4 text-xs">
                           <div className="flex items-center gap-1.5">
@@ -633,21 +629,20 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none text-sm"
                     />
                   </div>
-                  
+
                   {/* Type Filter */}
                   <div className="flex gap-2">
                     {(['ALL', 'STOCK_IN', 'EXPENSE', 'INCOME'] as TransactionFilter[]).map(filter => (
                       <button
                         key={filter}
                         onClick={() => { setTransactionFilter(filter); setCurrentPage(1); }}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                          transactionFilter === filter 
-                            ? filter === 'ALL' ? 'bg-slate-800 text-white'
+                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${transactionFilter === filter
+                          ? filter === 'ALL' ? 'bg-slate-800 text-white'
                             : filter === 'STOCK_IN' ? 'bg-blue-600 text-white'
-                            : filter === 'EXPENSE' ? 'bg-orange-600 text-white'
-                            : 'bg-teal-600 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
+                              : filter === 'EXPENSE' ? 'bg-orange-600 text-white'
+                                : 'bg-teal-600 text-white'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
                       >
                         {filter === 'ALL' ? 'All' : filter === 'STOCK_IN' ? 'Stock In' : filter === 'EXPENSE' ? 'Expenses' : 'Income'}
                       </button>
@@ -676,12 +671,12 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${getTypeColor(txn.type)}`}>
                               {getTypeIcon(txn.type)}
                             </div>
-                            
+
                             {/* Details */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-slate-800 truncate">
-                                  {txn.type === 'STOCK_IN' 
+                                  {txn.type === 'STOCK_IN'
                                     ? txn.products?.name || 'Unknown Product'
                                     : txn.category || 'Uncategorized'
                                   }
@@ -695,7 +690,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                 {formatDate(txn.date_str)} • {formatTime(txn.created_at)}
                               </div>
                             </div>
-                            
+
                             {/* Amount/Quantity */}
                             <div className="text-right">
                               {txn.type === 'STOCK_IN' ? (
@@ -753,21 +748,66 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                 ) : (
                   <div className="space-y-3">
                     {closings.map(closing => {
-                      const loss = (closing.total_revenue || 0) - (closing.cash_received || 0);
+                      // Calculate Expected Cash: Opening Cash + Sales + Income - Expenses - Withdrawals
+                      // Note: closing.total_revenue is actually just SALES in this system
+
+                      // We need to fetch the opening cash for this specific day
+                      // Since we don't have it easily joined here, we might need to rely on what's in the closing record
+                      // Fortunately, we added `opening_cash` to the closing record!
+
+                      const openingCash = closing.opening_cash || 0;
+                      const sales = closing.total_revenue || 0;
+                      // Note: We don't have income/expenses/withdrawals joined here easily for historical records
+                      // unless we fetch them or store "net expected" in the closing record.
+                      // Currently `total_revenue` seems to be treated as "Expected" in the UI code below, 
+                      // BUT in DayClosing.tsx, `total_revenue` is saved as `calculations.sales`.
+
+                      // The UI below shows "Expected" as `closing.total_revenue`. 
+                      // This is WRONG if `total_revenue` only stores Sales.
+                      // Let's check DayClosing.tsx: 
+                      // total_revenue: calculations.sales
+
+                      // So `closing.total_revenue` is ONLY Sales.
+                      // The "Expected" amount should be Opening + Sales + Income - Expenses - Withdrawals.
+                      // But we don't store the final "Expected Cash" in the DB.
+
+                      // However, for the purpose of this specific fix requested by the user:
+                      // The user sees "Expected: 6800" in Reports, but wants "11000" (which is 4200 opening + 6800 sales).
+                      // So we should at least add opening_cash to the displayed "Expected".
+
+                      // Ideally, we should store `expected_cash` in the DB to be accurate.
+                      // But for now, let's add `opening_cash` to `total_revenue` for the display, 
+                      // assuming `total_revenue` here is meant to represent "Cash that should be in drawer from sales".
+
+                      const expectedDisplay = sales + openingCash;
+
+                      // Calculate daily totals from transactions
+                      const dayTransactions = transactions.filter(t => t.date_str === closing.date_str && !t.is_return);
+                      const dayExpenses = dayTransactions
+                        .filter(t => t.type === 'EXPENSE')
+                        .reduce((sum, t) => sum + (t.amount || 0), 0);
+                      const dayIncome = dayTransactions
+                        .filter(t => t.type === 'INCOME')
+                        .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+                      const withdrawals = closing.total_withdrawals || 0;
+
+                      // Refined Expected Calculation
+                      const trueExpected = openingCash + sales + dayIncome - dayExpenses - withdrawals;
+
+                      const loss = trueExpected - (closing.cash_received || 0);
                       const hasLoss = loss > 0;
-                      
+
                       return (
-                        <div 
-                          key={closing.id} 
-                          className={`bg-white rounded-2xl border p-4 shadow-sm transition-all hover:shadow-md ${
-                            hasLoss ? 'border-red-200' : 'border-slate-100'
-                          }`}
+                        <div
+                          key={closing.id}
+                          className={`bg-white rounded-2xl border p-4 shadow-sm transition-all hover:shadow-md ${hasLoss ? 'border-red-200' : 'border-slate-100'
+                            }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                                hasLoss ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
-                              }`}>
+                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${hasLoss ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
+                                }`}>
                                 <Calendar size={20} />
                               </div>
                               <div>
@@ -777,11 +817,25 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                 </p>
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-6">
+                              {/* Added Details: Sales, Expenses, Income */}
+                              <div className="hidden md:block text-right">
+                                <p className="text-xs text-slate-400">Sales</p>
+                                <p className="font-bold text-emerald-600">Rs {sales.toLocaleString()}</p>
+                              </div>
+                              <div className="hidden md:block text-right">
+                                <p className="text-xs text-slate-400">Expenses</p>
+                                <p className="font-bold text-orange-600">Rs {dayExpenses.toLocaleString()}</p>
+                              </div>
+                              <div className="hidden md:block text-right">
+                                <p className="text-xs text-slate-400">Income</p>
+                                <p className="font-bold text-teal-600">Rs {dayIncome.toLocaleString()}</p>
+                              </div>
+
                               <div className="text-right">
                                 <p className="text-xs text-slate-400">Expected</p>
-                                <p className="font-bold text-slate-800">Rs {(closing.total_revenue || 0).toLocaleString()}</p>
+                                <p className="font-bold text-slate-800">Rs {trueExpected.toLocaleString()}</p>
                               </div>
                               <div className="text-right">
                                 <p className="text-xs text-slate-400">Received</p>
@@ -818,7 +872,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
             {/* ==================== CATEGORIES TAB ==================== */}
             {activeTab === 'categories' && (
               <div className="space-y-6">
-                
+
                 {/* Expenses by Category */}
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                   <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-orange-50 to-white">
@@ -838,7 +892,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="p-4">
                     {expenseBreakdown.filter(e => !e.subCategory).length === 0 ? (
                       <p className="text-center text-slate-400 py-8">No expense data for this period</p>
@@ -846,7 +900,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                       <div className="space-y-3">
                         {expenseBreakdown.filter(e => !e.subCategory).map((item, idx) => {
                           const subItems = expenseBreakdown.filter(e => e.subCategory && e.category === item.category);
-                          
+
                           return (
                             <div key={idx} className="space-y-2">
                               {/* Main Category */}
@@ -858,7 +912,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                   </div>
                                   {/* Progress bar */}
                                   <div className="h-2 bg-orange-100 rounded-full overflow-hidden">
-                                    <div 
+                                    <div
                                       className="h-full bg-orange-500 rounded-full transition-all"
                                       style={{ width: `${item.percentage}%` }}
                                     ></div>
@@ -869,7 +923,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                   </div>
                                 </div>
                               </div>
-                              
+
                               {/* Sub-categories */}
                               {subItems.length > 0 && (
                                 <div className="ml-4 space-y-1">
@@ -911,7 +965,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="p-4">
                     {incomeBreakdown.filter(i => !i.subCategory).length === 0 ? (
                       <p className="text-center text-slate-400 py-8">No income data for this period</p>
@@ -919,7 +973,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                       <div className="space-y-3">
                         {incomeBreakdown.filter(i => !i.subCategory).map((item, idx) => {
                           const subItems = incomeBreakdown.filter(i => i.subCategory && i.category === item.category);
-                          
+
                           return (
                             <div key={idx} className="space-y-2">
                               {/* Main Category */}
@@ -931,7 +985,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                   </div>
                                   {/* Progress bar */}
                                   <div className="h-2 bg-teal-100 rounded-full overflow-hidden">
-                                    <div 
+                                    <div
                                       className="h-full bg-teal-500 rounded-full transition-all"
                                       style={{ width: `${item.percentage}%` }}
                                     ></div>
@@ -942,7 +996,7 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                                   </div>
                                 </div>
                               </div>
-                              
+
                               {/* Sub-categories */}
                               {subItems.length > 0 && (
                                 <div className="ml-4 space-y-1">
@@ -978,14 +1032,12 @@ export const Reports: React.FC<ReportsProps> = ({ onBack, onNavigate, currentUse
                       <p className="text-2xl font-bold">Rs {totalIncomeAmount.toLocaleString()}</p>
                     </div>
                     <div className="text-center">
-                      <p className={`text-xs font-bold uppercase mb-1 ${
-                        totalIncomeAmount - totalExpenseAmount >= 0 ? 'text-emerald-400' : 'text-red-400'
-                      }`}>
+                      <p className={`text-xs font-bold uppercase mb-1 ${totalIncomeAmount - totalExpenseAmount >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
                         {totalIncomeAmount - totalExpenseAmount >= 0 ? 'Net Gain' : 'Net Loss'}
                       </p>
-                      <p className={`text-2xl font-bold ${
-                        totalIncomeAmount - totalExpenseAmount >= 0 ? 'text-emerald-400' : 'text-red-400'
-                      }`}>
+                      <p className={`text-2xl font-bold ${totalIncomeAmount - totalExpenseAmount >= 0 ? 'text-emerald-400' : 'text-red-400'
+                        }`}>
                         Rs {Math.abs(totalIncomeAmount - totalExpenseAmount).toLocaleString()}
                       </p>
                     </div>
